@@ -1,0 +1,31 @@
+#cloud-config
+# Ubuntu Server 24.04 autoinstall (Subiquity) for the Packer build. Unattended install of a
+# minimal headless server with SSH, plus a temporary build user Packer logs in as. The
+# agent itself is installed by the Packer shell provisioner (deploy/bootstrap.sh), and the
+# build user is locked by scripts/seal.sh before export.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  ssh:
+    install-server: true
+    allow-pw: true
+  identity:
+    hostname: securion-agent
+    username: securion
+    # SHA-512 crypt of "securion" (build-only; locked by seal.sh). Regenerate with:
+    #   openssl passwd -6 <password>
+    password: "$6$Wk/JEDiNTMc9gHpr$Zvr/go1M5kpCxIh2SjCC1wiR4cCYuX602Mxlyfd6ihQnsEDsa.k83.BpoMq4Uo23qvplEkFRDibYEFS0us9gu/"
+  storage:
+    layout:
+      name: lvm
+  packages:
+    - curl
+    - ca-certificates
+  # Passwordless sudo for the build user so Packer's provisioners can run (removed by seal).
+  late-commands:
+    - echo 'securion ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/securion-build
+    - chmod 440 /target/etc/sudoers.d/securion-build
+  user-data:
+    disable_root: true
