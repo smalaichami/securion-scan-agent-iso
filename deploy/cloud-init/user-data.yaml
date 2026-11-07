@@ -1,10 +1,9 @@
 #cloud-config
-# Securion scan-agent appliance — provisions itself on first boot.
+# Securion scan-agent appliance — provisions itself on first boot. Nothing to edit.
 #
-# EDIT one thing: set SCAN_ALLOW below to YOUR LAN subnet.
-# Do NOT put the org Scan Key here — it is a per-org secret; enroll it at first boot
-# via the loopback console (http://127.0.0.1:7878, SSH-tunnelled). See
-# docs/vm-appliance-auto-install.md.
+# No per-site config here: the org Scan Key and (optional) scan scope are entered once
+# at first boot via the loopback console (http://127.0.0.1:7878, SSH-tunnelled). The scan
+# scope defaults to the box's own LAN (auto-detected). See docs/vm-appliance-auto-install.md.
 #
 # The VM adapter MUST be BRIDGED (not NAT) so the agent sits on the real LAN it scans.
 
@@ -12,16 +11,6 @@ package_update: true
 packages:
   - curl
   - ca-certificates
-
-write_files:
-  # Nightly-scan scope. bootstrap.sh keeps this file as-is (it only creates one when
-  # absent), so this is the authoritative scope for the appliance.
-  - path: /etc/securion/scan.env
-    permissions: '0644'
-    content: |
-      # Securion scan-agent — nightly scan scope. EDIT SCAN_ALLOW for your LAN.
-      SCAN_ALLOW=192.168.0.0/24
-      # SCAN_EXCLUDE=192.168.0.1
 
 runcmd:
   # Fetch + run the self-contained bootstrap from the public distribution repo: installs
@@ -31,6 +20,7 @@ runcmd:
 
 final_message: |
   Securion scan-agent provisioned on first boot.
-  Still to do (one time): enroll the org Scan Key via the loopback console —
+  Still to do (one time): open the console and enter the org Scan Key —
     ssh -L 7878:127.0.0.1:7878 <user>@<this-host>  →  http://127.0.0.1:7878
+  Scan scope defaults to this box's LAN; override it in the same console.
   Ensure this VM's network adapter is BRIDGED so it can scan the LAN.

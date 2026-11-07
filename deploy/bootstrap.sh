@@ -8,21 +8,19 @@
 # pi-gen, or by hand:
 #
 #   curl -fsSL https://raw.githubusercontent.com/smalaichami/securion-scan-agent-iso/main/deploy/bootstrap.sh | sudo bash
-#   # or:  sudo SCAN_ALLOW=192.168.1.0/24 bash deploy/bootstrap.sh
 #
-# Per-deployment values come from the environment (never baked into an image):
-#   SCAN_ALLOW              scan scope CIDR (default 192.168.0.0/24) — EDIT THIS
-#   SCAN_EXCLUDE            optional never-scan CIDR/IP (e.g. the gateway)
+# Optional environment overrides (never bake secrets into an image):
 #   SECURION_AGENT_RELEASE  release tag to pin (default: latest)
 #   SECURION_BACKEND_URL    override the backend (default: baked api.securion.ai/agents)
 #
-# The org Scan Key is NOT set here — enroll at first boot via the loopback console
-# (http://127.0.0.1:7878, SSH-tunnelled). Re-runnable.
+# NOTHING per-site is configured here — no Scan Key, no scope. At first boot, open the
+# loopback web console (http://127.0.0.1:7878, SSH-tunnelled) and enter the org Scan Key;
+# the scan scope defaults to the box's own LAN (auto-detected) and can be overridden in
+# that same console. Re-runnable.
 set -euo pipefail
 
 ISO_REPO="smalaichami/securion-scan-agent-iso"
 REL="${SECURION_AGENT_RELEASE:-latest}"
-SCAN_ALLOW="${SCAN_ALLOW:-192.168.0.0/24}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "error: run as root (sudo)." >&2
@@ -60,14 +58,9 @@ echo "==> config: /etc/securion + /var/lib/securion"
 install -d -m 0750 /var/lib/securion
 install -d /etc/securion
 
-# Nightly-scan scope. Kept if it already exists (re-runs won't clobber an edited scope).
-if [[ ! -f /etc/securion/scan.env ]]; then
-  {
-    echo "# Securion scan-agent — nightly scan scope. EDIT SCAN_ALLOW for your LAN."
-    echo "SCAN_ALLOW=${SCAN_ALLOW}"
-    [[ -n "${SCAN_EXCLUDE:-}" ]] && echo "SCAN_EXCLUDE=${SCAN_EXCLUDE}"
-  } >/etc/securion/scan.env
-fi
+# No scope file: the scan scope is set from the web console (stored in the local SQLite)
+# or auto-detected from the box's LAN — see the securion-scan.service note below. If you
+# passed SCAN_ALLOW to this script, enter it in the console instead (one config point).
 
 # Optional sniffer env (pin the LAN interface with -iface here if needed).
 if [[ ! -f /etc/securion/agent.env ]]; then
@@ -139,9 +132,11 @@ After=securion-vuln-update.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=/etc/securion/scan.env
 WorkingDirectory=/var/lib/securion
-ExecStart=/usr/local/bin/securion-agent -allow ${SCAN_ALLOW} -fingerbank -vuln -push -report /var/lib/securion/scan-report.txt
+# No -allow: the agent resolves the scan scope itself — the operator-set scope from the
+# web console if present, otherwise the auto-detected local LAN subnet. So the console is
+# the only thing to configure (Key + optional scope); nothing is baked into the image.
+ExecStart=/usr/local/bin/securion-agent -fingerbank -vuln -push -report /var/lib/securion/scan-report.txt
 TimeoutStartSec=2h
 Nice=10
 IOSchedulingClass=best-effort
@@ -170,16 +165,14 @@ cat <<'DONE'
 
 ==> Provisioned. The box is NOT yet enrolled.
 
-Next (one time), enroll the org Scan Key via the loopback console:
+Next (one time), open the loopback console and enter the org Scan Key:
   # from your laptop:
   ssh -L 7878:127.0.0.1:7878 <user>@<this-host>
-  # then open http://127.0.0.1:7878 and paste the Scan Key  →  "Linked to <org>"
+  # then open http://127.0.0.1:7878 → paste the Scan Key → "Linked to <org>"
+  # (the scan scope defaults to this box's LAN; override it in the same console.)
 
 Then verify a scan immediately (optional):
   sudo systemctl start securion-vuln-update.service   # first feed pull (~hundreds of MB)
   sudo systemctl start securion-scan.service
   journalctl -u securion-scan.service -f
-
-Edit the scan scope any time in /etc/securion/scan.env (SCAN_ALLOW=...), then:
-  sudo systemctl restart securion-scan.service   # or wait for the nightly timer
 DONE
