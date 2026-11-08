@@ -87,12 +87,17 @@ build {
   name    = "securion-appliance"
   sources = ["source.virtualbox-iso.securion"]
 
-  # 1) Install the agent exactly as a real deployment would (deps + binary + systemd).
+  # 1) Install the agent exactly as a real deployment would (deps + binary + systemd),
+  #    then bake the offline CVE feeds so the FIRST scan already correlates CVEs (no wait
+  #    for the deploy-time download). Feeds are shared data (not per-box identity), so
+  #    baking them is safe; the nightly timer still refreshes them on the deployed box.
   provisioner "shell" {
     execute_command = "echo 'securion' | sudo -S -E bash '{{ .Path }}'"
     inline = [
       "cloud-init status --wait || true",
       "curl -fsSL https://raw.githubusercontent.com/smalaichami/securion-scan-agent-iso/main/deploy/bootstrap.sh | bash",
+      "echo '==> baking CVE feeds (NVD/KEV/EPSS, ~hundreds of MB)…'",
+      "/usr/local/bin/securion-agent -vuln-update || true",
     ]
   }
 

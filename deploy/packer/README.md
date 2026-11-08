@@ -46,9 +46,26 @@ packer build -var cpus=4 -var memory=4096 -var disk_size=20000 securion-applianc
 
 - Ubuntu Server 24.04 (minimal, headless), `nmap` / `masscan` / `arp-scan`.
 - `/usr/local/bin/securion-agent` + the sniffer, nightly-scan, and feed-refresh systemd units.
+- **Offline CVE feeds** (NVD/KEV/EPSS, in `/var/lib/securion/feeds`) — so the **first** scan
+  already correlates CVEs instead of waiting for the deploy-time download. They're shared
+  data (not per-box identity), and the nightly `securion-vuln-update.timer` keeps them
+  current on the deployed box. (This is the main reason the OVA is ~hundreds of MB larger
+  and the build takes a few minutes longer.)
 - **No secrets, no scope** — entered once at the console.
 - Appliance hygiene (`scripts/seal.sh`): machine-id + SSH host keys regenerate per deployed
   clone, logs/history cleared, build-time passwordless sudo removed.
+
+The OVA always bakes the **latest** `securion-agent` from the iso release, so every build
+automatically carries the current agent behaviour:
+
+- **Parallel host scanning** (default 6 at once) + `-T4` / masscan rate 5000 — a /24 scans
+  in minutes, not ~an hour. Tunable with `-concurrency` / `-rate` on the scan unit.
+- **Deep nightly scan** — `securion-scan.service` runs `-version-all` (max version/CVE
+  intensity) for the unattended nightly run; still parallel, so it stays fast.
+- **Console action buttons** — "Run scan now" + "Refresh CVE feeds".
+
+To pick up newer agent behaviour in a future image, just rebuild — it pulls the newest
+release.
 
 ## Notes / gotchas
 
