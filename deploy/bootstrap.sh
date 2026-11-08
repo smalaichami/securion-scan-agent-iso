@@ -30,9 +30,9 @@ fi
 echo "==> installing scan tools (nmap, masscan, arp-scan)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-# avahi-daemon → reachable as securion-agent.local (mDNS); iputils-arping → the
-# static-last-IP conflict check (see securion-netconfig below).
-apt-get install -y --no-install-recommends nmap masscan arp-scan curl ca-certificates avahi-daemon iputils-arping
+# avahi-daemon → reachable as securion-agent.local (mDNS), so the headless box is findable
+# by name on plain DHCP (no static address is assigned).
+apt-get install -y --no-install-recommends nmap masscan arp-scan curl ca-certificates avahi-daemon
 
 ARCH="$(dpkg --print-architecture)" # amd64 | arm64
 case "$ARCH" in
@@ -68,7 +68,6 @@ install -d /etc/securion
 if [[ ! -f /etc/securion/agent.env ]]; then
   {
     echo "# Sniffer env (optional). Append '-iface eth0' to pin the capture interface."
-    echo "# Set SECURION_STATIC_LAST_IP=0 to keep plain DHCP (skip the last-usable-IP step)."
     [[ -n "${SECURION_BACKEND_URL:-}" ]] && echo "SECURION_BACKEND_URL=${SECURION_BACKEND_URL}"
   } >/etc/securion/agent.env
 fi
@@ -78,30 +77,11 @@ fi
 # but for the appliance this identity is intended.
 hostnamectl set-hostname securion-agent 2>/dev/null || true
 
-echo "==> installing securion-netconfig (predictable last-usable-IP static address)"
-curl -fSL --retry 3 \
-  "https://raw.githubusercontent.com/${ISO_REPO}/main/deploy/securion-netconfig.sh" \
-  -o /usr/local/bin/securion-netconfig
-chmod 0755 /usr/local/bin/securion-netconfig
+# No static-IP assignment: the box keeps its DHCP lease and is reached by name via mDNS
+# (securion-agent.local). A fixed address also made the appliance scan itself at a tidy
+# predictable IP; on DHCP it's just another lease, and the agent excludes its own IP anyway.
 
 echo "==> writing systemd units"
-cat >/etc/systemd/system/securion-netconfig.service <<'UNIT'
-[Unit]
-Description=Securion appliance — assign the last usable LAN IP as a predictable static address
-After=network-online.target
-Wants=network-online.target
-# Reach the console/sniffer at the predictable address right away.
-Before=securion-dhcp-sniffer.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/securion-netconfig
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
 cat >/etc/systemd/system/securion-dhcp-sniffer.service <<'UNIT'
 [Unit]
 Description=Securion DHCP fingerprint sniffer + local console (passive, always-on)
@@ -195,7 +175,6 @@ UNIT
 
 echo "==> enabling services (sniffer now; feed + scan on their timers)"
 systemctl daemon-reload
-systemctl enable securion-netconfig.service
 systemctl enable --now securion-dhcp-sniffer.service
 systemctl enable --now securion-vuln-update.timer securion-scan.timer
 
@@ -203,15 +182,13 @@ cat <<'DONE'
 
 ==> Provisioned. The box is NOT yet enrolled.
 
-Reach this headless box (no monitor needed) by NAME or by the predictable static IP it
-takes on next boot (the last usable host of its LAN, e.g. .254 on a /24):
-  # by name (mDNS — same LAN):
+Reach this headless box (no monitor needed) by NAME (mDNS) — it runs on plain DHCP, no
+static address is assigned:
   ssh -L 7878:127.0.0.1:7878 securion@securion-agent.local
-  # or by the last-usable IP once it has rebooted onto the LAN.
+  # (or by whatever IP its DHCP lease gives it)
 
 Then open http://127.0.0.1:7878 → paste the org Scan Key → "Linked to <org>".
-(The scan scope defaults to this box's LAN; override it in the same console.)
-Note: the static address is applied on the next boot; reboot once after provisioning.
+(The scan scope defaults to this box's LAN; the box excludes its own IP automatically.)
 
 Then verify a scan immediately (optional):
   sudo systemctl start securion-vuln-update.service   # first feed pull (~hundreds of MB)
