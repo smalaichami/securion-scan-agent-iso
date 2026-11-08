@@ -114,7 +114,10 @@ Type=simple
 User=root
 StateDirectory=securion
 EnvironmentFile=-/etc/securion/agent.env
-ExecStart=/usr/local/bin/securion-agent -sniff
+# -scan-on-connect: when a brand-new device joins the LAN, auto-run a light scan of it
+# (§V1.8g) and push it — so new devices surface without waiting for the nightly run.
+# Scope = the console/auto scan scope; honours the exclude list.
+ExecStart=/usr/local/bin/securion-agent -sniff -scan-on-connect
 Restart=always
 RestartSec=5
 Nice=10
