@@ -136,7 +136,10 @@ WorkingDirectory=/var/lib/securion
 # No -allow: the agent resolves the scan scope itself — the operator-set scope from the
 # web console if present, otherwise the auto-detected local LAN subnet. So the console is
 # the only thing to configure (Key + optional scope); nothing is baked into the image.
-ExecStart=/usr/local/bin/securion-agent -fingerbank -vuln -push -report /var/lib/securion/scan-report.txt
+# -version-all: the nightly run is unattended, so use max nmap version intensity for the
+# most thorough CVE/version coverage. Hosts still scan in parallel (default concurrency),
+# so it stays reasonable. Drop -version-all for a faster interactive run.
+ExecStart=/usr/local/bin/securion-agent -version-all -fingerbank -vuln -push -report /var/lib/securion/scan-report.txt
 TimeoutStartSec=2h
 Nice=10
 IOSchedulingClass=best-effort
